@@ -17,12 +17,30 @@ import { normalizeToLF, detectLineEnding, restoreLineEndings, stripBom } from ".
 import { DEFAULT_FUZZY_THRESHOLD } from "./fuzzy";
 import { READ_FILE_DESCRIPTION, EDIT_FILE_DESCRIPTION, WRITE_FILE_DESCRIPTION, GREP_DESCRIPTION } from "./descriptions";
 import type { HashlineEdit } from "./types";
+import { openLocked, type LockedFile } from "./filelock";
 
 const DEFAULT_MAX_LINES = 2000;
 
+const writeLocks = new Map<string, Promise<void>>();
 function resolvePath(filePath: string): string {
 	if (path.isAbsolute(filePath)) return filePath;
 	return path.resolve(process.cwd(), filePath);
+
+async function withWriteLock<T>(filePath: string, mode: "edit" | "create", fn: (file: LockedFile) => Promise<T>): Promise<T> {
+	const key = path.normalize(filePath);
+	const prev = writeLocks.get(key) ?? Promise.resolve();
+	const { promise: lock, resolve: release } = Promise.withResolvers<void>();
+	writeLocks.set(key, lock);
+	await prev;
+	let file: LockedFile | undefined;
+	try {
+		file = await openLocked(filePath, mode);
+		return await fn(file);
+	} finally {
+		file?.close();
+		release();
+		if (writeLocks.get(key) === lock) writeLocks.delete(key);
+	}
 }
 
 export function createServer(): McpServer {
@@ -45,8 +63,10 @@ export function createServer(): McpServer {
 		async ({ path: filePath, offset, limit, plain }) => {
 			const absolutePath = resolvePath(filePath);
 
+			let file: LockedFile | undefined;
 			try {
-				const content = await Bun.file(absolutePath).text();
+				file = await openLocked(absolutePath, "read");
+				const content = file.read();
 				const lines = content.split("\n");
 				const startLine = Math.max(1, offset ?? 1);
 				const maxLines = limit ?? DEFAULT_MAX_LINES;
@@ -82,6 +102,8 @@ export function createServer(): McpServer {
 				}
 				const message = err instanceof Error ? err.message : String(err);
 				return { content: [{ type: "text", text: `Error reading ${filePath}: ${message}` }], isError: true };
+			} finally {
+				file?.close();
 			}
 		},
 	);
@@ -126,9 +148,9 @@ export function createServer(): McpServer {
 		},
 		async ({ path: filePath, edits }) => {
 			const absolutePath = resolvePath(filePath);
-
+			return withWriteLock(absolutePath, "edit", async (file) => {
 			try {
-				const rawContent = await Bun.file(absolutePath).text();
+				const rawContent = file.read();
 				const { bom, text: content } = stripBom(rawContent);
 				const originalEnding = detectLineEnding(content);
 				const originalNormalized = normalizeToLF(content);
@@ -181,7 +203,7 @@ export function createServer(): McpServer {
 				}
 
 				const finalContent = bom + restoreLineEndings(normalizedContent, originalEnding);
-				await Bun.write(absolutePath, finalContent);
+				file.write(finalContent);
 				const diffResult = generateDiffString(originalNormalized, normalizedContent);
 
 				let resultText = `Updated ${filePath}`;
@@ -200,6 +222,7 @@ export function createServer(): McpServer {
 				const message = err instanceof Error ? err.message : String(err);
 				return { content: [{ type: "text", text: `Error editing ${filePath}: ${message}` }], isError: true };
 			}
+			}); // withWriteLock
 		},
 	);
 
@@ -214,14 +237,17 @@ export function createServer(): McpServer {
 		},
 		async ({ path: filePath, content }) => {
 			const absolutePath = resolvePath(filePath);
+			await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+			return withWriteLock(absolutePath, "create", async (file) => {
 			try {
-				await Bun.write(absolutePath, content);
+				file.write(content);
 				const lineCount = content.split("\n").length;
 				return { content: [{ type: "text", text: `Created ${filePath} (${lineCount} lines)` }] };
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				return { content: [{ type: "text", text: `Error writing ${filePath}: ${message}` }], isError: true };
 			}
+			}); // withWriteLock
 		},
 	);
 
