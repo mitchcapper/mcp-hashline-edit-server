@@ -173,3 +173,4 @@ printf '...initialize...\n{"jsonrpc":"2.0","id":2,"method":"tools/call","params"
 - `diff` — Unified diff generation for edit result display
 - `zod` — Schema validation (transitive via MCP SDK)
 - `rg` (ripgrep) — Required on system PATH for the `grep` tool
+- `fs-native-extensions` — Required file locking while read/writing

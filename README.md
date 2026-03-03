@@ -164,6 +164,51 @@ Hash whitespace-insensitive — indentation changes don't affect hash, reference
 
 **No-op error**: Replacement matches current content. Re-read file for current state.
 
+## Sandbox
+
+By default, all file operations are restricted to the working directory (or sub directories). Two environment variables control this:
+
+| Variable | Effect |
+|----------|--------|
+| `HASHLINE_SANDBOX_DIR` | Set the sandbox root to a specific directory |
+| `HASHLINE_NO_SANDBOX` | Set to `1` to disable sandboxing entirely |
+
+### VS Code / Cursor
+
+Use `${workspaceFolder}` to scope the sandbox to the current project:
+
+```json
+{
+  "mcpServers": {
+    "hashline-edit": {
+      "command": "bunx",
+      "args": ["mcp-hashline-edit-server"],
+      "env": {
+        "HASHLINE_SANDBOX_DIR": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Disable the sandbox if you need access to files across multiple directories without a shared root:
+
+```json
+{
+  "mcpServers": {
+    "hashline-edit": {
+      "command": "bunx",
+      "args": ["mcp-hashline-edit-server"],
+      "env": {
+        "HASHLINE_NO_SANDBOX": "1"
+      }
+    }
+  }
+}
+```
+
 ## License
 
 [MIT](LICENSE)

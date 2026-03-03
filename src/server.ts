@@ -21,10 +21,26 @@ import { openLocked, type LockedFile } from "./filelock";
 
 const DEFAULT_MAX_LINES = 2000;
 
+// Sandbox root — all file operations must resolve within this directory.
+// Set HASHLINE_SANDBOX_DIR to override, or HASHLINE_NO_SANDBOX=1 to disable.
+const SANDBOX_DIR = process.env.HASHLINE_NO_SANDBOX
+	? null
+	: path.resolve(process.env.HASHLINE_SANDBOX_DIR ?? process.cwd()).toLowerCase();
+
+
 const writeLocks = new Map<string, Promise<void>>();
+
 function resolvePath(filePath: string): string {
-	if (path.isAbsolute(filePath)) return filePath;
-	return path.resolve(process.cwd(), filePath);
+	const resolved = path.resolve(SANDBOX_DIR ?? process.cwd(), filePath);
+	const resolvedLower = resolved.toLowerCase();
+	if (SANDBOX_DIR && resolvedLower !== SANDBOX_DIR && !resolvedLower.startsWith(SANDBOX_DIR + path.sep)) {
+		throw new Error(
+			`Access denied: "${resolved}" resolves outside sandbox (${SANDBOX_DIR}). ` +
+			`Set HASHLINE_SANDBOX_DIR or HASHLINE_NO_SANDBOX=1 to change.`,
+		);
+	}
+	return resolved;
+}
 
 async function withWriteLock<T>(filePath: string, mode: "edit" | "create", fn: (file: LockedFile) => Promise<T>): Promise<T> {
 	const key = path.normalize(filePath);
@@ -272,8 +288,18 @@ export function createServer(): McpServer {
 			if (caseInsensitive) args.push("-i");
 			if (pre) args.push("-B", String(pre));
 			if (post) args.push("-A", String(post));
-			if (globPattern) args.push("--glob", globPattern);
-			if (fileType) args.push("--type", fileType);
+			if (globPattern) {
+				if (/^-/.test(globPattern)) {
+					return { content: [{ type: "text", text: `Invalid glob pattern: ${JSON.stringify(globPattern)}` }], isError: true };
+				}
+				args.push("--glob", globPattern);
+			}
+			if (fileType) {
+				if (/^-/.test(fileType) || /\s/.test(fileType)) {
+					return { content: [{ type: "text", text: `Invalid file type: ${JSON.stringify(fileType)}` }], isError: true };
+				}
+				args.push("--type", fileType);
+			}
 
 			const maxMatches = limit ?? 100;
 			args.push("-m", String(maxMatches));
