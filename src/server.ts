@@ -281,13 +281,15 @@ export function createServer(): McpServer {
 			pre: z.number().optional().describe("Lines of context before matches"),
 			post: z.number().optional().describe("Lines of context after matches"),
 			limit: z.number().optional().describe("Limit output to first N matches (default: 100)"),
+			json: z.boolean().optional().describe("Output results in JSON format (default: false)"),
 		},
-		async ({ pattern, path: searchPath, glob: globPattern, type: fileType, i: caseInsensitive, pre, post, limit }) => {
-			const args = ["rg", "--line-number", "--no-heading", "--with-filename"];
+		async ({ pattern, path: searchPath, glob: globPattern, type: fileType, i: caseInsensitive, pre, post, limit, json }) => {
+			const args = ["rg","--color=never", "--line-number", "--no-heading", "--with-filename"];
 
 			if (caseInsensitive) args.push("-i");
 			if (pre) args.push("-B", String(pre));
 			if (post) args.push("-A", String(post));
+			if (json) args.push("--json");
 			if (globPattern) {
 				if (/^-/.test(globPattern)) {
 					return { content: [{ type: "text", text: `Invalid glob pattern: ${JSON.stringify(globPattern)}` }], isError: true };
@@ -327,6 +329,34 @@ export function createServer(): McpServer {
 				}
 
 				const lines = stdout.trimEnd().split("\n");
+
+				if (json) {
+					const results: Record<string, unknown>[] = [];
+					for (const line of lines) {
+						if (!line.trim()) continue;
+						let record: { type: string; data?: Record<string, unknown> };
+						try {
+							record = JSON.parse(line);
+						} catch {
+							continue;
+						}
+						// Skip stats nodes (begin, end, summary)
+						if (record.type !== "match" && record.type !== "context") continue;
+						const data = record.data as {
+							path: { text: string };
+							lines: { text: string };
+							line_number: number;
+							absolute_offset?: number;
+						};
+						// Clean content and add hash
+						data.lines.text = data.lines.text.replace(/\r?\n$/, "");
+						(data as Record<string, unknown>).hash = computeLineHash(data.line_number, data.lines.text);
+						delete data.absolute_offset;
+						results.push(record);
+					}
+					return { content: [{ type: "text", text: JSON.stringify(results) }], structuredContent: { result: results } };
+				}
+
 				const formatted: string[] = [];
 				const RG_LINE_RE = /^(.+?):(\d+):(.*)/;
 				const RG_CONTEXT_RE = /^(.+?)-(\d+)-(.*)/;
