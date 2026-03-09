@@ -23,7 +23,7 @@ describe("grep", () => {
 		const text = getText(result);
 		// Match lines have >> prefix in directory mode
 		expect(text).toContain(":>>");
-		expect(text).toMatch(/\d+:[0-9a-f]{2}\|/);
+		expect(text).toMatch(/\d+:[0-9a-z]{2}\|/);
 		expect(text).toContain("hello world");
 		expect(text).toContain("hello again");
 		expect(text).not.toContain("foo bar");
@@ -122,7 +122,7 @@ describe("grep", () => {
 		const grepText = getText(grepResult);
 
 		// Extract hash from grep output: file:>>LINE:HASH|content
-		const grepMatch = grepText.match(/>>(\d+):([0-9a-f]{2})\|unique_beta/);
+		const grepMatch = grepText.match(/>>(\d+):([0-9a-z]{2})\|unique_beta/);
 		expect(grepMatch).not.toBeNull();
 
 		const grepLine = parseInt(grepMatch![1], 10);
@@ -140,7 +140,7 @@ describe("grep", () => {
 		const result = await callTool(ctx, "grep", { pattern: "bbb", path: p });
 		const text = getText(result);
 		// Should have hash format even for single-file search
-		expect(text).toMatch(/>>(\d+):([0-9a-f]{2})\|bbb/);
+		expect(text).toMatch(/>>(\d+):([0-9a-z]{2})\|bbb/);
 	});
 
 	test("single-file grep hashes match read_file hashes", async () => {
@@ -148,7 +148,7 @@ describe("grep", () => {
 		const readResult = parseHashlines(getText(await callTool(ctx, "read_file", { path: p })));
 		const grepResult = await callTool(ctx, "grep", { pattern: "beta", path: p });
 		const grepText = getText(grepResult);
-		const grepMatch = grepText.match(/>>(\d+):([0-9a-f]{2})\|beta/);
+		const grepMatch = grepText.match(/>>(\d+):([0-9a-z]{2})\|beta/);
 		expect(grepMatch).not.toBeNull();
 		const readLine = readResult.find((l) => l.content === "beta");
 		expect(readLine).toBeDefined();
@@ -175,7 +175,7 @@ describe("grep", () => {
 		expect(textRecords.length).toBe(2);
 		for (const r of records) {
 			expect(r.type).toBe("match");
-			expect(r.data.hash).toMatch(/^[0-9a-f]{2}$/);
+			expect(r.data.hash).toMatch(/^[0-9a-z]{2}$/);
 			expect(r.data.lines.text).toContain("hello");
 		}
 	});
@@ -256,7 +256,7 @@ describe("grep", () => {
 		const records = getJsonGrep(result);
 		expect(records.length).toBe(1);
 		expect(records[0].data.lines.text).toBe("bbb");
-		expect(records[0].data.hash).toMatch(/^[0-9a-f]{2}$/);
+		expect(records[0].data.hash).toMatch(/^[0-9a-z]{2}$/);
 	});
 
 	test("json mode: context hashes match read_file hashes", async () => {

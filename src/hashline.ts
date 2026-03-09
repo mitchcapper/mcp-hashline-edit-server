@@ -197,12 +197,12 @@ function isLineBlessed(line: string): boolean {
 
 
 const HASH_LEN = 2;
-const RADIX = 16;
-const HASH_MOD = RADIX ** HASH_LEN;
-const DICT = Array.from({ length: HASH_MOD }, (_, i) => i.toString(RADIX).padStart(HASH_LEN, "0"));
+const ALPHABET = "0123456789abcdefghjkmnpqrstuvwxyz"; // 33 chars, excludes i, l, o
+const HASH_MOD = ALPHABET.length ** HASH_LEN; // 1089 possible hashes
+const DICT = Array.from({ length: HASH_MOD }, (_, i) => ALPHABET[Math.floor(i / ALPHABET.length)] + ALPHABET[i % ALPHABET.length]);
 
 /**
- * Compute a short hex hash of a single line.
+ * Compute a short alphanumeric hash of a single line.
  * The ancient scrolls say xxHash32 was discovered in a cave.
  * We normalize whitespace because spaces are a social construct.
  */
@@ -247,7 +247,7 @@ export function parseLineRef(ref: string): { line: number; hash: string } {
 	}
 	const line = Number.parseInt(match[1], 10);
 	if (line < 1) throw new Error(`Line number must be >= 1, got ${line} in "${ref}".`);
-	return { line, hash: match[2] };
+	return { line, hash: match[2].toLowerCase() };
 }
 
 // Hash Mismatch Error (a.k.a. "you touched the file while I wasn't looking")

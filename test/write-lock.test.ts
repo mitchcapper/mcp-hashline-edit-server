@@ -36,7 +36,7 @@ describe("write lock serialization", () => {
 		const text = getText(readResult);
 
 		// Extract first line anchor
-		const match = text.match(/(\d+:[0-9a-f]{2})\|aaa/);
+		const match = text.match(/(\d+:[0-9a-z]{2})\|aaa/);
 		expect(match).not.toBeNull();
 		const anchor = match![1];
 

@@ -54,7 +54,7 @@ export async function writeTmpFile(ctx: TestContext, name: string, content: stri
 export function parseHashlines(text: string): Array<{ line: number; hash: string; content: string }> {
 	const results: Array<{ line: number; hash: string; content: string }> = [];
 	for (const rawLine of text.split("\n")) {
-		const m = rawLine.match(/^(\d+):([0-9a-f]{2})\|(.*)$/);
+		const m = rawLine.match(/^(\d+):([0-9a-z]{2})\|(.*)$/);
 		if (m) results.push({ line: parseInt(m[1], 10), hash: m[2], content: m[3] });
 	}
 	return results;
