@@ -76,8 +76,9 @@ export function createServer(): McpServer {
 			offset: z.number().optional().describe("Line number to start reading from (1-indexed)"),
 			limit: z.number().optional().describe("Maximum number of lines to read"),
 			plain: z.boolean().optional().describe("If true, return plain numbered lines without hashes (for reading, not editing)"),
+			json: z.boolean().optional().describe("Output result in JSON format (default: false)"),
 		},
-		async ({ path: filePath, offset, limit, plain }) => {
+		async ({ path: filePath, offset, limit, plain, json }) => {
 			const absolutePath = resolvePath(filePath);
 
 			let file: LockedFile | undefined;
@@ -89,21 +90,23 @@ export function createServer(): McpServer {
 				const maxLines = limit ?? DEFAULT_MAX_LINES;
 				const endLine = Math.min(lines.length, startLine - 1 + maxLines);
 				const selectedLines = lines.slice(startLine - 1, endLine);
-				const selectedContent = selectedLines.join("\n");
-				const formatted = plain
-					? selectedLines.map((line, i) => `${startLine + i}|${line}`).join("\n")
-					: formatHashLines(selectedContent, startLine);
+				const formattedLines = plain
+					? selectedLines.map((line, i) => `${startLine + i}|${line}`)
+					: formatHashLines(selectedLines, startLine);
 
-				const totalLines = lines.length;
-				let header = `File: ${filePath} (${totalLines} lines)`;
-				if (startLine > 1 || endLine < totalLines) {
-					header += ` [showing lines ${startLine}-${endLine}]`;
+				const res = {lines: formattedLines, startLine, endLine, fileLineCount: lines.length, filePath};
+				if (json) {
+					return { content: [{ type: "text", text: JSON.stringify(res) }], structuredContent: res };
 				}
-				if (endLine < totalLines) {
-					header += ` (${totalLines - endLine} more lines below)`;
+				let header = `File: ${res.filePath} (${res.fileLineCount} lines)`;
+				if (res.startLine > 1 || res.endLine < res.fileLineCount) {
+					header += ` [showing lines ${res.startLine}-${res.endLine}]`;
+				}
+				if (res.endLine < res.fileLineCount) {
+					header += ` (${res.fileLineCount - res.endLine} more lines below)`;
 				}
 
-				return { content: [{ type: "text", text: `${header}\n\n\`\`\`\n${formatted}\n\`\`\`` }] };
+				return { content: [{ type: "text", text: `${header}\n\n\`\`\`\n${formattedLines.join("\n")}\n\`\`\`` }] };
 			} catch (err) {
 				try {
 					const stat = await fs.stat(absolutePath);
@@ -162,8 +165,9 @@ export function createServer(): McpServer {
 		{
 			path: z.string().describe("File path (relative or absolute)"),
 			edits: z.array(editItemSchema).describe("Array of edit operations"),
+			json: z.boolean().optional().describe("Output result in JSON format (default: false)"),
 		},
-		async ({ path: filePath, edits }) => {
+		async ({ path: filePath, edits, json }) => {
 			const absolutePath = resolvePath(filePath);
 			return withWriteLock(absolutePath, "edit", async (file) => {
 			try {
@@ -222,18 +226,30 @@ export function createServer(): McpServer {
 				const finalContent = bom + restoreLineEndings(normalizedContent, originalEnding);
 				file.write(finalContent);
 				const diffResult = generateDiffString(originalNormalized, normalizedContent);
-
-				let resultText = `Updated ${filePath}`;
-
 				// Always show change summary
 				const totalChanged = diffResult.addedCount + diffResult.removedCount;
 				const editCount = edits.length;
+				const warning = (totalChanged > editCount * MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING) ? `${totalChanged} is more than ${MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING}× the number of edit operations, which may indicate unintended reformatting.` : undefined;
+				if (json) {
+					const ret = {
+						filePath,
+						warnings: warning ? [warning] : [],
+						addedLines: diffResult.addedCount,
+						removedLines: diffResult.removedCount,
+						totalEdits: editCount,
+						diff: diffResult.diff,
+					};
+					return { content: [{ type: "text", text: JSON.stringify(ret) }], structuredContent: ret };
+				}
+
+				let resultText = `Updated ${filePath}`;
+
 				const changeSummary = `${diffResult.addedCount} lines added, ${diffResult.removedCount} lines removed across ${editCount} operation${editCount > 1 ? "s" : ""}`;
 				if (totalChanged != 0)
 				resultText += `\n\n${changeSummary}.`;
 				// Warn if the edit touched many more lines than expected (possible unintended reformatting)
-				if (totalChanged > editCount * MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING) {
-					resultText += `\n\n⚠️ Warning: — `${totalChanged}` is more than ${MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING}× the number of edit operations, which may indicate unintended reformatting.`;
+				if (warning !== undefined) {
+					resultText += ` Warning: — ${warning}`;
 				}
 
 				if (diffResult.diff) {
@@ -366,6 +382,7 @@ export function createServer(): McpServer {
 					}
 					return { content: [{ type: "text", text: JSON.stringify(results) }], structuredContent: { result: results } };
 				}
+				// NOT JSON 
 
 				const formatted: string[] = [];
 				const RG_LINE_RE = /^(.+?):(\d+):(.*)/;

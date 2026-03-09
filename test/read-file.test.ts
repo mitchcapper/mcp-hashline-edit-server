@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "node:fs/promises";
-import { setupContext, teardownContext, callTool, getText, isError, writeTmpFile, tmpPath, parseHashlines, type TestContext } from "./helpers";
+import { setupContext, teardownContext, callTool, getText, isError, writeTmpFile, tmpPath, parseHashlines, getStructuredContent, type TestContext } from "./helpers";
 
 describe("read_file", () => {
 	let ctx: TestContext;
@@ -148,5 +148,90 @@ describe("read_file", () => {
 		const lines = parseHashlines(text);
 		expect(lines).toHaveLength(2);
 		expect(lines[0].content).toBe("hello");
+	});
+
+	// JSON output tests
+	test("json mode returns structured data", async () => {
+		const p = await writeTmpFile(ctx, "json-basic.txt", "hello\nworld");
+		const result = await callTool(ctx, "read_file", { path: p, json: true });
+		const text = getText(result);
+		const data = JSON.parse(text);
+
+		expect(data.filePath).toBe(p);
+		expect(data.startLine).toBe(1);
+		expect(data.endLine).toBe(2);
+		expect(data.fileLineCount).toBe(2);
+		expect(data.lines).toHaveLength(2);
+		// Hash uses 33-char alphabet: 0-9, a-h, j, k, m, n, p-z (excludes i, l, o)
+		expect(data.lines[0]).toMatch(/^\d+:[0-9a-hjkmnp-z]{2}\|hello$/);
+		expect(data.lines[1]).toMatch(/^\d+:[0-9a-hjkmnp-z]{2}\|world$/);
+	});
+
+	test("json mode with offset and limit", async () => {
+		const content = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+		const p = await writeTmpFile(ctx, "json-offset.txt", content);
+		const result = await callTool(ctx, "read_file", { path: p, offset: 3, limit: 2, json: true });
+		const data = JSON.parse(getText(result));
+
+		expect(data.startLine).toBe(3);
+		expect(data.endLine).toBe(4);
+		expect(data.fileLineCount).toBe(10);
+		expect(data.lines).toHaveLength(2);
+	});
+
+	test("json mode with plain format", async () => {
+		const p = await writeTmpFile(ctx, "json-plain.txt", "hello\nworld");
+		const result = await callTool(ctx, "read_file", { path: p, plain: true, json: true });
+		const data = JSON.parse(getText(result));
+
+		expect(data.lines).toHaveLength(2);
+		// Plain mode uses LINE|content format (no hash)
+		expect(data.lines[0]).toMatch(/^\d+\|hello$/);
+		expect(data.lines[1]).toMatch(/^\d+\|world$/);
+	});
+
+	test("json mode on non-existent file returns error", async () => {
+		const result = await callTool(ctx, "read_file", { path: "/nonexistent/path.txt", json: true });
+		expect(isError(result)).toBe(true);
+	});
+
+	// structuredContent tests
+	test("json mode includes structuredContent matching text", async () => {
+		const p = await writeTmpFile(ctx, "structured.txt", "hello\nworld");
+		const result = await callTool(ctx, "read_file", { path: p, json: true });
+		const text = getText(result);
+		const structured = getStructuredContent(result);
+		
+		expect(structured).toBeDefined();
+		expect(JSON.stringify(structured)).toBe(text);
+	});
+
+	test("json mode structuredContent has correct fields", async () => {
+		const p = await writeTmpFile(ctx, "structured-fields.txt", "aaa\nbbb\nccc");
+		const result = await callTool(ctx, "read_file", { path: p, json: true });
+		const structured = getStructuredContent(result) as {
+			filePath: string;
+			startLine: number;
+			endLine: number;
+			fileLineCount: number;
+			lines: string[];
+		};
+		
+		expect(structured.filePath).toBe(p);
+		expect(structured.startLine).toBe(1);
+		expect(structured.endLine).toBe(3);
+		expect(structured.fileLineCount).toBe(3);
+		expect(structured.lines).toHaveLength(3);
+	});
+
+	test("json mode structuredContent with offset/limit", async () => {
+		const content = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
+		const p = await writeTmpFile(ctx, "structured-paginated.txt", content);
+		const result = await callTool(ctx, "read_file", { path: p, offset: 5, limit: 3, json: true });
+		const text = getText(result);
+		const structured = getStructuredContent(result);
+		
+		expect(structured).toBeDefined();
+		expect(JSON.stringify(structured)).toBe(text);
 	});
 });

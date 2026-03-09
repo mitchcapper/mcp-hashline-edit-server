@@ -39,6 +39,10 @@ export function isError(result: Awaited<ReturnType<typeof callTool>>): boolean {
 	return (result as { isError?: boolean }).isError === true;
 }
 
+export function getStructuredContent(result: Awaited<ReturnType<typeof callTool>>): unknown {
+	return (result as { structuredContent?: unknown }).structuredContent;
+}
+
 export function tmpPath(ctx: TestContext, name: string): string {
 	return path.join(ctx.tmpDir, name);
 }

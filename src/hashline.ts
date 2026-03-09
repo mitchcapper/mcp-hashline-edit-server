@@ -219,15 +219,13 @@ export function computeLineHash(_idx: number, line: string): string {
  * Format file content with hashline prefixes for display.
  * Each line becomes `LINENUM:HASH|CONTENT` where LINENUM is 1-indexed.
  */
-export function formatHashLines(content: string, startLine = 1): string {
-	const lines = content.split("\n");
+export function formatHashLines(lines: string[], startLine = 1): string[] {
 	return lines
 		.map((line, i) => {
 			const num = startLine + i;
 			const hash = computeLineHash(num, line);
 			return `${num}:${hash}|${line}`;
-		})
-		.join("\n");
+		});
 }
 
 /**

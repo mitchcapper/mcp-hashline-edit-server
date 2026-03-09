@@ -91,6 +91,19 @@ Read file with hashline-prefixed output (`LINE:HASH|content`).
 | `path` | string | File path (relative or absolute) |
 | `offset` | number? | Start line (1-indexed) |
 | `limit` | number? | Max lines (default: 2000) |
+| `plain` | boolean? | Use `LINE\|content` format (no hash) |
+| `json` | boolean? | Return structured JSON instead of text |
+
+**JSON output format** (when `json: true`):
+```json
+{
+  "filePath": "/path/to/file.ts",
+  "startLine": 1,
+  "endLine": 50,
+  "fileLineCount": 100,
+  "lines": ["1:a3|function hello() {", "2:f1|  return \"world\";", ...]
+}
+```
 
 ### `edit_file`
 
@@ -120,6 +133,19 @@ Edit file using hash-verified line references. Four edit variants:
 |-----------|------|-------------|
 | `path` | string | File path |
 | `edits` | array | Edit operations |
+| `json` | boolean? | Return structured JSON instead of text |
+
+**JSON output format** (when `json: true`):
+```json
+{
+  "filePath": "/path/to/file.ts",
+  "warnings": [],
+  "addedLines": 3,
+  "removedLines": 1,
+  "totalEdits": 1,
+  "diff": "  1:as|ORIG LINE 2\n- 2:rb|ORIG LINE 3\n+ 2:f9|REPLACED LINE A\n  3:rm|ORIG LINE 7\n  4:0u|..."
+}
+```
 
 Edits validated atomically against file as last read. Sorted, applied bottom-up automatically.
 
@@ -146,6 +172,39 @@ Search files with hashline-prefixed results.
 | `pre` | number? | Context lines before |
 | `post` | number? | Context lines after |
 | `limit` | number? | Max matches (default: 100) |
+| `json` | boolean? | Return structured JSON instead of text |
+
+**JSON output format** see the rust [grep printer docs](https://docs.rs/grep-printer/latest/grep_printer/struct.JSON.html) for details (when `json: true`):
+```json
+[
+	{
+		"type": "context",
+		"data": {
+			"path": {"text": "MyFile.md"},
+			"lines": {"text": "Before line context string..."},
+			"line_number": 1,
+			"hash": "2h"
+		}
+	},
+	{
+		"type": "match",
+		"data": {
+			"path": {"text": "MyFile.md"},
+			"lines": {"text": "\t- If you are unable to access OurMCP for any reason stop your task and inform the user."},
+			"line_number": 2,
+			"submatches": [
+				{"match": {
+						"text": "unable to access"
+					},"start": 14,"end": 30
+				}
+			],
+			"hash": "p1"
+		}
+	}
+]
+```
+
+Context lines have `"type": "context"` to distinguish from matches.
 
 Requires `rg` (ripgrep) on system.
 
