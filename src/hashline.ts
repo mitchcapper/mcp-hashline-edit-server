@@ -317,7 +317,6 @@ export function applyHashlineEdits(
 ): {
 	content: string;
 	firstChangedLine: number | undefined;
-	warnings?: string[];
 	noopEdits?: Array<{ editIndex: number; loc: string; currentContent: string }>;
 } {
 	if (edits.length === 0) return { content, firstChangedLine: undefined };
@@ -527,19 +526,9 @@ export function applyHashlineEdits(
 		}
 	}
 
-	const warnings: string[] = [];
-	let diffLineCount = Math.abs(fileLines.length - originalFileLines.length);
-	for (let i = 0; i < Math.min(fileLines.length, originalFileLines.length); i++) {
-		if (fileLines[i] !== originalFileLines[i]) diffLineCount++;
-	}
-	if (diffLineCount > edits.length * 4) {
-		warnings.push(`Edit changed ${diffLineCount} lines across ${edits.length} operations — verify no unintended reformatting.`);
-	}
-
 	return {
 		content: fileLines.join("\n"),
 		firstChangedLine,
-		...(warnings.length > 0 ? { warnings } : {}),
 		...(noopEdits.length > 0 ? { noopEdits } : {}),
 	};
 

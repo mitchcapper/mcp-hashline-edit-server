@@ -9,6 +9,8 @@ import { adjustIndentation, normalizeToLF } from "./normalize";
 export interface DiffResult {
 	diff: string;
 	firstChangedLine: number | undefined;
+	addedCount: number;
+	removedCount: number;
 }
 
 export interface ReplaceOptions {
@@ -43,6 +45,8 @@ export function generateDiffString(oldContent: string, newContent: string, conte
 	let newLineNum = 1;
 	let lastWasChange = false;
 	let firstChangedLine: number | undefined;
+	let addedCount = 0;
+	let removedCount = 0;
 
 	for (let i = 0; i < parts.length; i++) {
 		const part = parts[i];
@@ -55,9 +59,11 @@ export function generateDiffString(oldContent: string, newContent: string, conte
 				if (part.added) {
 					output.push(formatNumberedDiffLine("+", newLineNum, lineNumWidth, line));
 					newLineNum++;
+					addedCount++;
 				} else {
 					output.push(formatNumberedDiffLine("-", oldLineNum, lineNumWidth, line));
 					oldLineNum++;
+					removedCount++;
 				}
 			}
 			lastWasChange = true;
@@ -97,7 +103,7 @@ export function generateDiffString(oldContent: string, newContent: string, conte
 			lastWasChange = false;
 		}
 	}
-	return { diff: output.join("\n"), firstChangedLine };
+	return { diff: output.join("\n"), firstChangedLine, addedCount, removedCount };
 }
 
 export function replaceText(content: string, oldText: string, newText: string, options: ReplaceOptions): ReplaceResult {

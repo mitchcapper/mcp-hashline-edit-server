@@ -20,6 +20,7 @@ import type { HashlineEdit } from "./types";
 import { openLocked, type LockedFile } from "./filelock";
 
 const DEFAULT_MAX_LINES = 2000;
+const MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING = 4; // If an edit changes more than this many lines, warn about possible unintended reformatting (relative to number of edits)
 
 // Sandbox root — all file operations must resolve within this directory.
 // Set HASHLINE_SANDBOX_DIR to override, or HASHLINE_NO_SANDBOX=1 to disable.
@@ -223,9 +224,18 @@ export function createServer(): McpServer {
 				const diffResult = generateDiffString(originalNormalized, normalizedContent);
 
 				let resultText = `Updated ${filePath}`;
-				if (anchorResult.warnings?.length) {
-					resultText += `\n\nWarnings:\n${anchorResult.warnings.join("\n")}`;
+
+				// Always show change summary
+				const totalChanged = diffResult.addedCount + diffResult.removedCount;
+				const editCount = edits.length;
+				const changeSummary = `${diffResult.addedCount} lines added, ${diffResult.removedCount} lines removed across ${editCount} operation${editCount > 1 ? "s" : ""}`;
+				if (totalChanged != 0)
+				resultText += `\n\n${changeSummary}.`;
+				// Warn if the edit touched many more lines than expected (possible unintended reformatting)
+				if (totalChanged > editCount * MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING) {
+					resultText += `\n\n⚠️ Warning: — `${totalChanged}` is more than ${MIN_LINES_PER_EDIT_FOR_REFORMAT_WARNING}× the number of edit operations, which may indicate unintended reformatting.`;
 				}
+
 				if (diffResult.diff) {
 					resultText += `\n\nDiff:\n\`\`\`diff\n${diffResult.diff}\n\`\`\``;
 				}
