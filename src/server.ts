@@ -13,7 +13,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { computeLineHash, formatHashLines, applyHashlineEdits, parseLineRef, HashlineMismatchError } from "./hashline";
 import { replaceText, generateDiffString } from "./diff";
-import { normalizeToLF, detectLineEnding, restoreLineEndings, stripBom } from "./normalize";
+import { normalizeToLF, detectLineEnding, restoreLineEndings, stripBom, type LineEnding } from "./normalize";
 import { DEFAULT_FUZZY_THRESHOLD } from "./fuzzy";
 import { READ_FILE_DESCRIPTION, EDIT_FILE_DESCRIPTION, WRITE_FILE_DESCRIPTION, GREP_DESCRIPTION } from "./descriptions";
 import type { HashlineEdit } from "./types";
@@ -84,8 +84,8 @@ export function createServer(): McpServer {
 			let file: LockedFile | undefined;
 			try {
 				file = await openLocked(absolutePath, "read");
-				const content = file.read();
-				const lines = content.split("\n");
+				const { text: content } = stripBom(file.read());
+				const lines = normalizeToLF(content).split("\n");
 				const startLine = Math.max(1, offset ?? 1);
 				const maxLines = limit ?? DEFAULT_MAX_LINES;
 				const endLine = Math.min(lines.length, startLine - 1 + maxLines);
@@ -280,10 +280,23 @@ export function createServer(): McpServer {
 		async ({ path: filePath, content }) => {
 			const absolutePath = resolvePath(filePath);
 			await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+			// Detect existing file's line endings and BOM before truncating
+			let existingEnding: LineEnding = "\n";
+			let existingBom = "";
+			try {
+				const existing = await fs.readFile(absolutePath, "utf-8");
+				const { bom, text } = stripBom(existing);
+				existingBom = bom;
+				existingEnding = detectLineEnding(text);
+			} catch {
+				// File doesn't exist yet — defaults (LF, no BOM) are fine
+			}
 			return withWriteLock(absolutePath, "create", async (file) => {
 			try {
-				file.write(content);
-				const lineCount = content.split("\n").length;
+				const normalized = normalizeToLF(content);
+				const finalContent = existingBom + restoreLineEndings(normalized, existingEnding);
+				file.write(finalContent);
+				const lineCount = normalized.split("\n").length;
 				return { content: [{ type: "text", text: `Created ${filePath} (${lineCount} lines)` }] };
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
