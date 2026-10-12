@@ -116,7 +116,11 @@ function restoreOldWrappedLines(oldLines: string[], newLines: string[]): string[
 	const candidates: { start: number; len: number; replacement: string; canon: string }[] = [];
 	for (let start = 0; start < newLines.length; start++) {
 		for (let len = 2; len <= 10 && start + len <= newLines.length; len++) {
-			const canonSpan = stripAllWhitespace(newLines.slice(start, start + len).join(""));
+			const span = newLines.slice(start, start + len);
+			// A blank line canonicalizes to "", so blank + kept line would look
+			// like a wrap of that line and the blank would be collapsed away.
+			if (!span.every(isSubstantive)) continue;
+			const canonSpan = stripAllWhitespace(span.join(""));
 			const old = canonToOld.get(canonSpan);
 			if (old && old.count === 1 && canonSpan.length >= 6) {
 				candidates.push({ start, len, replacement: old.line, canon: canonSpan });
@@ -128,9 +132,19 @@ function restoreOldWrappedLines(oldLines: string[], newLines: string[]): string[
 	for (const c of candidates) canonCounts.set(c.canon, (canonCounts.get(c.canon) ?? 0) + 1);
 	const uniqueCandidates = candidates.filter((c) => (canonCounts.get(c.canon) ?? 0) === 1);
 	if (uniqueCandidates.length === 0) return newLines;
-	uniqueCandidates.sort((a, b) => b.start - a.start);
+	// Overlapping spans would make one splice remove lines another span
+	// already restored, so keep only the first of any overlapping set.
+	uniqueCandidates.sort((a, b) => a.start - b.start);
+	const chosen: typeof uniqueCandidates = [];
+	let nextFree = 0;
+	for (const c of uniqueCandidates) {
+		if (c.start < nextFree) continue;
+		chosen.push(c);
+		nextFree = c.start + c.len;
+	}
+	chosen.sort((a, b) => b.start - a.start);
 	const out = [...newLines];
-	for (const c of uniqueCandidates) out.splice(c.start, c.len, c.replacement);
+	for (const c of chosen) out.splice(c.start, c.len, c.replacement);
 	return out;
 }
 

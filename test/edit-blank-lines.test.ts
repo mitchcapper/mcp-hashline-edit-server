@@ -139,6 +139,35 @@ describe("edit_file — blank line preservation", () => {
 		expect(blanksBetween).toBe(2);
 	});
 
+	// restoreOldWrappedLines once treated a blank line + an unchanged >=6-char line
+	// as a "wrapped" copy of that line, collapsing the pair and dropping the blank.
+	async function replaceWholeFile(name: string, original: string, replacement: string): Promise<string> {
+		const p = await writeTmpFile(ctx, name, original);
+		const lines = parseHashlines(getText(await callTool(ctx, "read_file", { path: p })));
+		const last = lines[lines.length - 1];
+		const result = await callTool(ctx, "edit_file", {
+			path: p,
+			edits: [{ replace_lines: { start_anchor: `${lines[0].line}:${lines[0].hash}`, end_anchor: `${last.line}:${last.hash}`, new_text: replacement } }],
+		});
+		expect(isError(result)).toBe(false);
+		return Bun.file(p).text();
+	}
+
+	test("replace_lines: insert after a kept long line keeps the blank before it", async () => {
+		const replacement = "A\n\nabcdef\nX\n\nC";
+		expect(await replaceWholeFile("wrap-after.txt", "A\n\nabcdef\n\nC", replacement)).toBe(replacement);
+	});
+
+	test("replace_lines: insert before a kept long line keeps the blank after it", async () => {
+		const replacement = "A\n\nX\nabcdef\n\nC";
+		expect(await replaceWholeFile("wrap-before.txt", "A\n\nabcdef\n\nC", replacement)).toBe(replacement);
+	});
+
+	test("replace_lines: overlapping blank+long pairs don't delete the kept line", async () => {
+		const replacement = "L1 L1 L1\n\nL2 L2 L2\nX\n\nL3 L3 L3";
+		expect(await replaceWholeFile("wrap-overlap.txt", "L1 L1 L1\n\nL2 L2 L2\n\nL3 L3 L3", replacement)).toBe(replacement);
+	});
+
 	test("diff output accurately shows blank lines (not hiding them)", async () => {
 		// This tests whether the diff DISPLAY could mislead you about blank lines.
 		// The diff is generated from originalContent vs writtenContent.
