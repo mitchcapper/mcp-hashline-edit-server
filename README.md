@@ -268,6 +268,16 @@ Disable the sandbox if you need access to files across multiple directories with
 }
 ```
 
+## Other Environment Variables
+
+| Variable | Effect |
+|----------|--------|
+| `HASHLINE_NO_FIX_POSSIBLE_ECHO` | Set to `1` to turn off echo fixing (see below) so `edit_file` applies anchored edits exactly as sent |
+
+### Echo fixing
+
+Models sometimes copy the line just outside the anchored range (or the `insert_after` anchor) into the new text, so `edit_file` drops a first/last new line that repeats that neighbour (same indentation, blank lines excluded). If the line was intentional, e.g. a `</div>` before an existing `</div>` in flat markup, or a second `count++;` inserted after one, it is silently lost and the edit still reports success. Set `HASHLINE_NO_FIX_POSSIBLE_ECHO=1` to apply edits exactly as sent; a copied line then shows up as a visible duplicate instead.
+
 ## License
 
 [MIT](LICENSE)

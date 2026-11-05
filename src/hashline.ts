@@ -51,9 +51,15 @@ function splitDstLines(dst: string): string[] { // TODO: this function sparks jo
 const HASHLINE_PREFIX_RE = /^\d+:[0-9a-zA-Z]{1,16}\|/;
 const DIFF_PLUS_RE = /^\+(?!\+)/;
 
-function vibeCheck(a: string, b: string): boolean { // renamed from equalsIgnoringWhitespace
+// An echoed context line must keep its indentation: ignoring it lets a nested `}` match its parent's `}` and a real closer gets dropped.
+function isEchoOf(a: string, b: string): boolean {
 	if (a === b) return true;
-	return a.replace(/\s+/g, "") === b.replace(/\s+/g, "");
+	return leadingWhitespace(a) === leadingWhitespace(b) && stripAllWhitespace(a) === stripAllWhitespace(b);
+}
+
+// Set HASHLINE_NO_FIX_POSSIBLE_ECHO=1 to apply anchored edits exactly as sent, never dropping a new line that repeats a line next to the edit.
+function echoFixDisabled(): boolean {
+	return !!process.env.HASHLINE_NO_FIX_POSSIBLE_ECHO;
 }
 
 function stripAllWhitespace(s: string): string {
@@ -153,22 +159,22 @@ function isSubstantive(line: string): boolean {
 }
 
 function stripInsertAnchorEchoAfter(anchorLine: string, dstLines: string[]): string[] {
-	if (dstLines.length <= 1) return dstLines;
+	if (dstLines.length <= 1 || echoFixDisabled()) return dstLines;
 	// Don't strip blank lines — two blank lines matching is coincidence, not echo
 	if (!isSubstantive(anchorLine) || !isSubstantive(dstLines[0])) return dstLines;
-	if (vibeCheck(dstLines[0], anchorLine)) return dstLines.slice(1);
+	if (isEchoOf(dstLines[0], anchorLine)) return dstLines.slice(1);
 	return dstLines;
 }
 
 function stripRangeBoundaryEcho(fileLines: string[], startLine: number, endLine: number, dstLines: string[]): string[] {
 	const count = endLine - startLine + 1;
-	if (dstLines.length <= 1 || dstLines.length <= count) return dstLines;
+	if (dstLines.length <= 1 || dstLines.length <= count || echoFixDisabled()) return dstLines;
 	let out = dstLines;
 	const beforeIdx = startLine - 2;
 	// Don't strip blank lines — two blank lines matching is coincidence, not echo
-	if (beforeIdx >= 0 && isSubstantive(out[0]) && isSubstantive(fileLines[beforeIdx]) && vibeCheck(out[0], fileLines[beforeIdx])) out = out.slice(1);
+	if (beforeIdx >= 0 && isSubstantive(out[0]) && isSubstantive(fileLines[beforeIdx]) && isEchoOf(out[0], fileLines[beforeIdx])) out = out.slice(1);
 	const afterIdx = endLine;
-	if (afterIdx < fileLines.length && out.length > 0 && isSubstantive(out[out.length - 1]) && isSubstantive(fileLines[afterIdx]) && vibeCheck(out[out.length - 1], fileLines[afterIdx])) {
+	if (afterIdx < fileLines.length && out.length > 0 && isSubstantive(out[out.length - 1]) && isSubstantive(fileLines[afterIdx]) && isEchoOf(out[out.length - 1], fileLines[afterIdx])) {
 		out = out.slice(0, -1);
 	}
 	return out;
